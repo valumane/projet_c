@@ -73,8 +73,7 @@ int main(int argc, char * argv[]){
     // que le nombre testé est bien premier
 
     printf("Worker démarré, pid : %d, pere : %d\n", getpid(), getppid());
-    printf("nombre recu en argument : %s\n", argv[1]);
-
+    printf("nombre recu en argument : %s\n", argv[1]);    
 
     printf("Worker termine\n");
     printf("---------------------\n");

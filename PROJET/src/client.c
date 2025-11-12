@@ -36,9 +36,8 @@
 /************************************************************************
  * Usage et analyse des arguments passés en ligne de commande
  ************************************************************************/
-/*
-static void usage(const char *exeName, const char *message)
-{
+
+static void usage(const char *exeName, const char *message){
     fprintf(stderr, "usage : %s <ordre> [<nombre>]\n", exeName);
     fprintf(stderr, "   ordre \"" TK_STOP  "\" : arrêt master\n");
     fprintf(stderr, "   ordre \"" TK_COMPUTE  "\" : calcul de nombre premier\n");
@@ -51,8 +50,7 @@ static void usage(const char *exeName, const char *message)
     exit(EXIT_FAILURE);
 }
 
-static int parseArgs(int argc, char * argv[], int *number)
-{
+static int parseArgs(int argc, char * argv[], int *number){
     int order = ORDER_NONE;
 
     if ((argc != 2) && (argc != 3))
@@ -90,7 +88,7 @@ static int parseArgs(int argc, char * argv[], int *number)
     
     return order;
 }
-*/
+
 
 /************************************************************************
  * Fonction principale

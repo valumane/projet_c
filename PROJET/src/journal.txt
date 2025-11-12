@@ -90,3 +90,14 @@ w7 crée
 w11 crée
 11 capté par w11
 11 premier
+
+session 3 :
+/test master-worker/test
+version minimaliste fonctionnelle du projet
+terminal 1 : ./master
+terminal 2 : ./client <n> ( ex : ./client 19)
+
+pour tout fermé - terminal 2 : ./client -1
+
+a faire
+gestion avec toute les options du profs

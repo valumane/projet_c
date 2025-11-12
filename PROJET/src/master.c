@@ -26,6 +26,10 @@
 // on peut ici définir une structure stockant tout ce dont le master
 // a besoin
 
+    int last_tested = 2;
+    int highest_prime = 2;
+
+
     // nom des tubes nommés
     //const char *fifoClientToMaster = "client_to_master.fifo";
     //const char *fifoMasterToClient = "master_to_client.fifo";
@@ -35,8 +39,7 @@
  * Usage et analyse des arguments passés en ligne de commande
  ************************************************************************/
 
-static void usage(const char *exeName, const char *message)
-{
+static void usage(const char *exeName, const char *message){
     fprintf(stderr, "usage : %s\n", exeName);
     if (message != NULL)
         fprintf(stderr, "message : %s\n", message);
@@ -88,6 +91,29 @@ void loop(/* paramètres */)
     return fd;
 }
 
+char *intToArg(int number) {
+    int temp = number;
+    int len = 0;
+
+    if (number == 0){ len = 1;} 
+    
+    // Compte les chiffres
+    while (temp != 0) {
+        len++;
+        temp /= 10;
+    }
+
+    len++; // +1 pour le caractère de fin '\0'
+    char *arg = malloc(len * sizeof(char));
+    assert(arg != NULL);
+
+    // Conversion en texte
+    snprintf(arg, len, "%d", number);
+    printf("arg : %s\n", arg);
+    return arg;
+}
+
+
 /* le client envoie un truc au master, code bougé pour pouvoir commencé la gestion master -> worker
 printf("Création du tube nommé client_to_master.fifo\n");
         mkfifo(fifoClientToMaster, 0666);
@@ -116,9 +142,10 @@ printf("Création du tube nommé client_to_master.fifo\n");
  ************************************************************************/
 
 int main(int argc, char * argv[]){
-    if (argc != 1)
+    /*if (argc != 1){
+        printf("argc %d\n", argc);
         usage(argv[0], NULL);
-
+    }*/
     // - création des sémaphores
         // ipc ( mutex_clients, sync_client )
     
@@ -146,17 +173,16 @@ int main(int argc, char * argv[]){
             int fd = fork();
             assert(fd != -1);
 
-            if (fd == 0) // processus fils
-            {
+            if (fd == 0){ // processus fils
                 // affiché le pid du worker et du pere
                 printf("Processus worker créé, pid : %d, pere : %d\n", getpid(), getppid());
                 // executé le worker avec comme argument nombre
-                int fdWorker = execv( "./worker", (char * const []){"worker", nombre, NULL} );
+                char *args[] = {"worker", intToArg(nombre), NULL};
+                int fdWorker = execv( "./worker", args );
                 assert(fdWorker != -1);
                     
             } // processus père
-            else
-            {
+            else{
                 // affiché le pid du master et du fils
                 printf("Processus master, pid : %d, fils : %d\n", getpid(), fd);
             }
