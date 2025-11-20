@@ -131,7 +131,7 @@ int main(int argc, char *argv[]) {
   int myPrime = atoi(argv[3]);
 
   printf("[WORKER] (pid=%d) : gère %d\n", getpid(), myPrime);
-
+  write(fdWriteMaster, &myPrime, sizeof(myPrime));
   // pipe vers le worker suivant
   int nextPipe[2] = {-1, -1};
   pid_t nextPid = -1;
