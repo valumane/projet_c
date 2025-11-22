@@ -17,23 +17,6 @@
 #include <unistd.h>
 /******************/
 
-/************** Opérations P/V **************/
-void P(int semid) {
-  struct sembuf op = {0, -1, 0};
-  if (semop(semid, &op, 1) == -1) {
-    perror("semop P");
-    assert(0);
-  }
-}
-
-void V(int semid) {
-  struct sembuf op = {0, +1, 0};
-  if (semop(semid, &op, 1) == -1) {
-    perror("semop V");
-    assert(0);
-  }
-}
-
 /************** debut **************/
 // chaines possibles pour le premier paramètre de la ligne de commande
 #define TK_STOP "stop"
@@ -111,37 +94,6 @@ static int parseArgs(int argc, char *argv[], int *number) {
   return order;
 }
 
-/********************* */
-/* secondaire */
-/********************* */
-
-void interpretOrder(int order, int number, int resultat) {
-  switch (order) {
-    case ORDER_COMPUTE_PRIME:
-      if (resultat)
-        printf("[CLIENT] %d est premier\n", number);
-      else
-        printf("[CLIENT] %d n'est pas premier\n", number);
-      break;
-
-    case ORDER_HOW_MANY_PRIME:
-      printf("[CLIENT] %d nombres premiers ont été trouvés\n", resultat);
-      break;
-
-    case ORDER_HIGHEST_PRIME:
-      printf("[CLIENT] Le plus grand nombre premier trouvé est %d\n", resultat);
-      break;
-
-    case ORDER_STOP:
-      printf("[CLIENT] Master arrêté (code retour %d)\n", resultat);
-      break;
-
-    default:
-      printf("[CLIENT] Ordre inconnu (%d), résultat brut = %d\n", order,
-             resultat);
-      break;
-  }
-}
 
 /************************************************************************
  * Fonction principale
@@ -246,7 +198,7 @@ int main(int argc, char *argv[]) {
   V(sem_sync);
 
   // Interprétation
-  interpretOrder(order, number, resultat);
+  clientInterpretOrder(order, number, resultat);
 
   return EXIT_SUCCESS;
 }

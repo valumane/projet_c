@@ -13,13 +13,35 @@
 #include "master_worker.h"
 
 /************************************************************************
+ * Données persistantes d'un worker
+ ************************************************************************/
+
+// on peut ici définir une structure stockant tout ce dont le worker
+// a besoin : le nombre premier dont il a la charge, ...
+
+/************************************************************************
  * Fonctions utilitaires
  ************************************************************************/
 
 static void usage(const char *exeName, const char *message) {
-  fprintf(stderr, "usage : %s <fdIn> <fdToMaster> <prime>\n", exeName);
-  if (message != NULL) fprintf(stderr, "message : %s\n", message);
+  fprintf(stderr, "usage : %s <n> <fdIn> <fdToMaster>\n", exeName);
+  fprintf(stderr, "   <n> : nombre premier géré par le worker\n");
+  fprintf(stderr, "   <fdIn> : canal d'entrée pour tester un nombre\n");
+  fprintf(stderr,
+          "   <fdToMaster> : canal de sortie pour indiquer si un nombre est "
+          "premier ou non\n");
+  if (message != NULL) {
+    fprintf(stderr, "message : %s\n", message);
+  }
   exit(EXIT_FAILURE);
+}
+
+static void parseArgs(int argc, char *argv[] /*, structure à remplir*/) {
+  if (argc != 4) {
+    usage(argv[0], "Nombre d'arguments incorrect");
+  }
+
+  // remplir la structure
 }
 
 /************************************************************************
@@ -49,20 +71,20 @@ void loop(int fdRead, int *hasNext, int nextPipe[2], int fdWriteMaster,
       break;
     }
 
-    // ---- CAS ÉGALITÉ (N == P) → SUCCÈS ----
+    // ---- CAS (N == P) -> SUCCÈS ----
     if (n == myPrime) {
       write(fdWriteMaster, &n, sizeof(int));  // succès
       continue;
     }
 
-    // ---- CAS NON PREMIER (P divise N) → ÉCHEC ----
+    // ---- CAS (P divise N) -> ÉCHEC ----
     if (n % myPrime == 0) {
       int fail = 0;  // 0 = NON PREMIER
       write(fdWriteMaster, &fail, sizeof(int));
       continue;
     }
 
-    // ---- CAS N NON DIVISIBLE → envoyer au suivant ----
+    // ---- CAS N NON DIVISIBLE -> envoyer au suivant ----
     if (!(*hasNext)) {
       // ---- Créer un nouveau worker (prime = N) ----
       *hasNext = 1;
@@ -107,7 +129,7 @@ void loop(int fdRead, int *hasNext, int nextPipe[2], int fdWriteMaster,
  ************************************************************************/
 
 int main(int argc, char *argv[]) {
-  if (argc != 4) usage(argv[0], "Nombre d'arguments incorrect");
+  parseArgs(argc, argv);
 
   int fdRead = atoi(argv[1]);
   int fdWriteMaster = atoi(argv[2]);

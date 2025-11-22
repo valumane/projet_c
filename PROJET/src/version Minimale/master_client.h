@@ -28,4 +28,12 @@ void createFifos(); //crée les fifos
 void closePipes(int pipe1, int pipe2); // ferme les pipeds
 void unlinkPipes(); //supprime les pipes
 
+
+/* semaphore */
+void P(int semid); //prendre 
+void V(int semid); //vendre
+
+/* intreprete les ordres */
+void clientInterpretOrder(int order, int number, int resultat);
+int masterInterpretOrder(int order, int *nombre, int fdClient);
 #endif

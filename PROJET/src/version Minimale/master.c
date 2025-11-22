@@ -42,27 +42,6 @@ int sem_mutex;  // protège la section critique client-master
 int sem_sync;   // synchronisation client -> master
 
 /************************************************************************
- * Fonctions P/V
- ************************************************************************/
-void P(int semid) {
-  struct sembuf op = {0, -1, 0};
-  int r = semop(semid, &op, 1);
-  if (r == -1) {
-    perror("semop P");
-    assert(0);
-  }
-}
-
-void V(int semid) {
-  struct sembuf op = {0, +1, 0};
-  int r = semop(semid, &op, 1);
-  if (r == -1) {
-    perror("semop V");
-    assert(0);
-  }
-}
-
-/************************************************************************
  * Fonctions secondaires
  ***********************************************************************/
 void set_nonblocking(int fd) {
@@ -153,6 +132,7 @@ void loop(int pipeMW[2], int pipeWM[2]) {
       close(fdClient);
       continue;
     }
+
     if (r != sizeof(order)) {
       fprintf(stderr, "[MASTER] Ordre incomplet\n");
       close(fdClient);
@@ -161,17 +141,9 @@ void loop(int pipeMW[2], int pipeWM[2]) {
 
     int nombre = 0;
 
-    if (order == ORDER_COMPUTE_PRIME) {
-      read(fdClient, &nombre, sizeof(nombre));
-      printf("[MASTER] Reçu COMPUTE %d\n", nombre);
-    } else if (order == ORDER_STOP)
-      printf("[MASTER] Reçu STOP\n");
-    else if (order == ORDER_HOW_MANY_PRIME)
-      printf("[MASTER] Reçu HOW_MANY\n");
-    else if (order == ORDER_HIGHEST_PRIME)
-      printf("[MASTER] Reçu HIGHEST\n");
-    else {
-      printf("[MASTER] Ordre inconnu.\n");
+    int retour = masterInterpretOrder(order, &nombre, fdClient);
+
+    if (retour == -1) {  // ordre inconnu ou erreur
       close(fdClient);
       continue;
     }
@@ -217,15 +189,20 @@ int main(void) {
 
   key_t key_mutex = ftok("master.c", 'M');
   key_t key_sync = ftok("master.c", 'S');
-  if (key_mutex == -1 || key_sync == -1) usage("master", "Erreur ftok");
+  if (key_mutex == -1 || key_sync == -1) {
+    usage("master", "Erreur ftok");
+  }
 
   sem_mutex = semget(key_mutex, 1, IPC_CREAT | 0666);
   sem_sync = semget(key_sync, 1, IPC_CREAT | 0666);
-  if (sem_mutex == -1 || sem_sync == -1) usage("master", "Erreur semget");
+  if (sem_mutex == -1 || sem_sync == -1) {
+    usage("master", "Erreur semget");
+  }
 
   if (semctl(sem_mutex, 0, SETVAL, 1) == -1 ||
-      semctl(sem_sync, 0, SETVAL, 0) == -1)
+      semctl(sem_sync, 0, SETVAL, 0) == -1) {
     usage("master", "Erreur semctl");
+  }
 
   int pipeMW[2], pipeWM[2];
   assert(pipe(pipeMW) == 0);
@@ -235,8 +212,7 @@ int main(void) {
   assert(pid != -1);
 
   if (pid == 0) {
-    close(pipeMW[1]);
-    close(pipeWM[0]);
+    closePipes(pipeMW[1], pipeWM[0]);
 
     char fdReadStr[10], fdWriteStr[10], primeStr[10];
     snprintf(fdReadStr, sizeof(fdReadStr), "%d", pipeMW[0]);
@@ -249,14 +225,12 @@ int main(void) {
     exit(1);
   }
 
-  close(pipeMW[0]);
-  close(pipeWM[1]);
+  closePipes(pipeMW[0], pipeWM[1]);
   set_nonblocking(pipeWM[0]);
 
   loop(pipeMW, pipeWM);
 
-  close(pipeMW[1]);
-  close(pipeWM[0]);
+  closePipes(pipeMW[1], pipeWM[0]);
   unlinkPipes();
 
   semctl(sem_mutex, 0, IPC_RMID);

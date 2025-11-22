@@ -10,7 +10,7 @@ master: master.c
 	$(CC) $(CFLAGS) master.c master_client.c -o master.o
 
 client: client.c
-	$(CC) $(CFLAGS) client.c -o client.o
+	$(CC) $(CFLAGS) client.c master_client.c -o client.o
 
 clean:
 	rm -f *.o *.fifo
