@@ -82,8 +82,8 @@ void loop(int fdRead, int *hasNext, int nextPipe[2], int fdWriteMaster,
         snprintf(fdWriteStr, sizeof(fdWriteStr), "%d", fdWriteMaster);
         snprintf(primeStr, sizeof(primeStr), "%d", n);
 
-        char *args[] = {"worker.o", fdReadStr, fdWriteStr, primeStr, NULL};
-        execv("./worker.o", args);
+        char *args[] = {"worker", fdReadStr, fdWriteStr, primeStr, NULL};
+        execv("./worker", args);
         perror("execv");
         exit(EXIT_FAILURE);
       }

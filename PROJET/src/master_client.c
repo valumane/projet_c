@@ -214,8 +214,8 @@ void mode_local(int number) {
 void show_worker(int argc, char *argv[]) {
   /* ======= MODE SPÉCIAL : ./client showworker ======= */
   if (argc == 2 && strcmp(argv[1], "showworker") == 0) {
-    fprintf(stdout, "ps -C worker.o -o stat,cmd | grep -E 'R|S|D|I'\n");
-    system("ps -C worker.o -o stat,cmd | grep -E 'R|S|D|I'");
+    fprintf(stdout, "ps -C worker -o stat,cmd | grep -E 'R|S|D|I'\n");
+    system("ps -C worker -o stat,cmd | grep -E 'R|S|D|I'");
   }
   /* ================================================== */
 }

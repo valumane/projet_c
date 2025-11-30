@@ -19,7 +19,7 @@
 
 
 // ========================
-// Données globales
+// Données glowrite pipeMWles
 // ========================
 int last_tested = 1;    // dernier nombre testé
 int highest_prime = 0;  // plus grand premier trouvé
@@ -43,7 +43,7 @@ int order_compute(int nombre, int pipeMW[2], int pipeWM[2]) {
     for (int i = last_tested + 1; i <= nombre; ++i) {
       // envoyer i au pipeline
       if (write(pipeMW[1], &i, sizeof(i)) != sizeof(i)) {
-        perror("[MASTER] write pipeMW");
+        perror("[MASTER] wwrite pipeMW");
         return 0;
       }
 
@@ -199,6 +199,8 @@ int main(int argc, char *argv[]) {
   // --- pipes pour le pipeline Hoare ---
   int pipeMW[2], pipeWM[2];
 
+  pipe(pipeMW);
+  pipe(pipeWM);
   // --- création du premier worker (prime = 2) ---
   int pid = fork();
 
@@ -211,8 +213,8 @@ int main(int argc, char *argv[]) {
     snprintf(wStr, sizeof(wStr), "%d", pipeWM[1]);
     snprintf(pStr, sizeof(pStr), "%d", 2);
 
-    char *args[] = {"worker.o", rStr, wStr, pStr, NULL};
-    execv("./worker.o", args);
+    char *args[] = {"worker", rStr, wStr, pStr, NULL};
+    execv("./worker", args);
     perror("execv");
     exit(EXIT_FAILURE);
   }
