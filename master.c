@@ -9,13 +9,13 @@
 #include "master_worker.h"
 
 
-#include <assert.h>
 #include <fcntl.h>
 #include <string.h>
 #include <sys/ipc.h>
 #include <sys/sem.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include "myassert.h"
 
 
 // ========================
@@ -117,15 +117,19 @@ void loop(int sem_sync, int pipeMW[2], int pipeWM[2]) {
     int order = ORDER_NONE;
     int number = 0;
 
-    // ---- lire la requête du client ----
+        // ---- lire la requête du client ----
     int fdIn = open(FIFO_CLIENT_TO_MASTER, O_RDONLY);
-    
-    read(fdIn, &order, sizeof(order));
+    myassert(fdIn != -1, "[MASTER] open(FIFO_CLIENT_TO_MASTER) a échoué");
+
+    int r = read(fdIn, &order, sizeof(order));
+    myassert(r == (int)sizeof(order),
+             "[MASTER] read ordre depuis le client a échoué");
 
     if (order == ORDER_COMPUTE_PRIME) {
-      if (read(fdIn, &number, sizeof(number)) != sizeof(number)) {
+      r = read(fdIn, &number, sizeof(number));
+      if (r != (int)sizeof(number)) {
         perror("[MASTER] read number");
-        close(fdIn);
+        myassert(close(fdIn) != -1, "[MASTER] close(fdIn) a échoué");
         continue;
       }
       printf("[MASTER] Reçu COMPUTE %d\n", number);
@@ -137,7 +141,8 @@ void loop(int sem_sync, int pipeMW[2], int pipeWM[2]) {
       printf("[MASTER] Reçu HIGHEST\n");
     }
 
-    close(fdIn);
+    myassert(close(fdIn) != -1, "[MASTER] close(fdIn) a échoué");
+
 
     // ---- traitement ----
     int resultat = 0;
@@ -169,8 +174,8 @@ void loop(int sem_sync, int pipeMW[2], int pipeWM[2]) {
     // ---- gestion du STOP ----
     if (order == ORDER_STOP) {
       int stopVal = -1;
-      write(pipeMW[1], &stopVal,
-            sizeof(stopVal));  // propage stop dans le pipeline
+      int w = write(pipeMW[1], &stopVal, sizeof(stopVal));
+      myassert(w == (int)sizeof(stopVal),"[MASTER] write STOP dans le pipeline a échoué");
       break;
     }
   }
@@ -186,23 +191,36 @@ int main(int argc, char *argv[]) {
 
   createFifos();
 
+    createFifos();
+
   // --- sémaphores ---
   int key_mutex = ftok("master.c", 'M');
-  int key_sync = ftok("master.c", 'S');
+  int key_sync  = ftok("master.c", 'S');
+
+  myassert(key_mutex != -1, "ftok(\"master.c\", 'M') a échoué");
+  myassert(key_sync  != -1, "ftok(\"master.c\", 'S') a échoué");
 
   int sem_mutex = semget(key_mutex, 1, IPC_CREAT | 0666);
-  int sem_sync = semget(key_sync, 1, IPC_CREAT | 0666);
+  int sem_sync  = semget(key_sync, 1, IPC_CREAT | 0666);
 
-  semctl(sem_mutex, 0, SETVAL, 1);  // mutex client
-  semctl(sem_sync, 0, SETVAL, 0);   // sync client/master
+  myassert(sem_mutex != -1, "semget(sem_mutex) a échoué");
+  myassert(sem_sync  != -1, "semget(sem_sync) a échoué");
+
+  myassert(semctl(sem_mutex, 0, SETVAL, 1) != -1,
+           "semctl(sem_mutex, SETVAL) a échoué");
+  myassert(semctl(sem_sync, 0, SETVAL, 0) != -1,
+           "semctl(sem_sync, SETVAL) a échoué");
 
   // --- pipes pour le pipeline Hoare ---
   int pipeMW[2], pipeWM[2];
 
-  pipe(pipeMW);
-  pipe(pipeWM);
+  myassert(pipe(pipeMW) == 0, "pipe(pipeMW) a échoué");
+  myassert(pipe(pipeWM) == 0, "pipe(pipeWM) a échoué");
+
   // --- création du premier worker (prime = 2) ---
   int pid = fork();
+  myassert(pid != -1, "fork pour le premier worker a échoué");
+
 
   if (pid == 0) {
     // process worker
@@ -223,9 +241,10 @@ int main(int argc, char *argv[]) {
   closePipes(pipeMW[0], pipeWM[1]);
 
   // lire le tout premier premier envoyé par le worker 2
+  // lire le tout premier premier envoyé par le worker 2
   int firstPrime = 0;
-  read(pipeWM[0], &firstPrime, sizeof(firstPrime));
-  highest_prime = firstPrime;  // normalement 2
+  int r = read(pipeWM[0], &firstPrime, sizeof(firstPrime));
+  myassert(r == (int)sizeof(firstPrime), "read premier premier depuis le worker a échoué");highest_prime = firstPrime;  // normalement 2
   nb_primes = 1;
   last_tested = firstPrime;
   printf("[MASTER] Premier premier trouvé : %d\n", firstPrime);

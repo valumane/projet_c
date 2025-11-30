@@ -14,46 +14,59 @@
 #include <sys/sem.h>
 #include <sys/stat.h>  // <-- pour mkfifo()
 #include <unistd.h>    // <-- pour close() et unlink()
+#include "myassert.h"
+#include "errno.h"
 
 #include "master_client.h"
 
 // sema
 void P(int semid) {
   struct sembuf op = {0, -1, 0};
-  if (semop(semid, &op, 1) == -1) {
-    perror("semop P");
-    assert(0);
-  }
+  int ret = semop(semid, &op, 1);
+  myassert(ret != -1, "semop P a échoué");
 }
 
 void V(int semid) {
   struct sembuf op = {0, +1, 0};
-  if (semop(semid, &op, 1) == -1) {
-    perror("semop V");
-    assert(0);
-  }
+  int ret = semop(semid, &op, 1);
+  myassert(ret != -1, "semop V a échoué");
 }
 
 void resetSemaphore(int sem1, int sem2) {
-  semctl(sem1, 0, IPC_RMID);
-  semctl(sem2, 0, IPC_RMID);
+  myassert(semctl(sem1, 0, IPC_RMID) != -1, "semctl(sem1, IPC_RMID) a échoué");
+  myassert(semctl(sem2, 0, IPC_RMID) != -1, "semctl(sem2, IPC_RMID) a échoué");
 }
 
 // fonctions éventuelles internes au fichier
 void createFifos() {
-  mkfifo(FIFO_CLIENT_TO_MASTER, 0666);
-  mkfifo(FIFO_MASTER_TO_CLIENT, 0666);
+  int r = mkfifo(FIFO_CLIENT_TO_MASTER, 0666);
+  if (r == -1 && errno != EEXIST) {
+    myassert(false, "mkfifo(FIFO_CLIENT_TO_MASTER) a échoué");
+  }
+
+  r = mkfifo(FIFO_MASTER_TO_CLIENT, 0666);
+  if (r == -1 && errno != EEXIST) {
+    myassert(false, "mkfifo(FIFO_MASTER_TO_CLIENT) a échoué");
+  }
 }
 
 void closePipes(int pipe1, int pipe2) {
-  close(pipe1);
-  close(pipe2);
+  myassert(close(pipe1) != -1, "close(pipe1) a échoué");
+  myassert(close(pipe2) != -1, "close(pipe2) a échoué");
 }
 
 void unlinkPipes() {
-  unlink(FIFO_CLIENT_TO_MASTER);  // supprimer la FIFO client->master
-  unlink(FIFO_MASTER_TO_CLIENT);  // supprimer la FIFO master->client
+  int r = unlink(FIFO_CLIENT_TO_MASTER);
+  if (r == -1 && errno != ENOENT) {
+    myassert(false, "unlink(FIFO_CLIENT_TO_MASTER) a échoué");
+  }
+
+  r = unlink(FIFO_MASTER_TO_CLIENT);
+  if (r == -1 && errno != ENOENT) {
+    myassert(false, "unlink(FIFO_MASTER_TO_CLIENT) a échoué");
+  }
 }
+
 
 /* client */
 void clientInterpretOrder(int order, int number, int resultat) {
