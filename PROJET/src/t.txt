@@ -1,0 +1,951 @@
+0README:Pour compiler :
+0README:- "make" (ou "make all") : compile tout le projet
+0README:- "make <exe>" : compile un seul binaire
+0README:     donc il y a 3 possibilités : "make master", "make worker", "make client"
+0README:- "make <fichier.o>" : compile un seul .c
+0README:     par exemple "make master_client.o" pour compiler master_client.c
+0README:- "make clean" : supprime les .o et les .d
+0README:- "make distclean" : supprime les .o, les .d et les exécutables
+0README:- le Makefile est à adapter si vous ajoutez des fichiers source
+0README:
+0README:Suppression des tubes nommés et des sémaphore :
+0README:- le script rmsempipe.sh est fourni
+0README:- il supprime tous les sémaphores avec les droits 641
+0README:- il supprime les deux tubes nommés avec des noms précisés en dur
+0README:- le script est à adapter pour mettre les noms des tubes que vous avez choisis
+0README:
+0README:Assertions :
+0README:- le module "myassert" fonctionne comme "assert" avec des messages plus clairs
+0README:- cf. myassert.h pour la documentation
+client.c:#if defined HAVE_CONFIG_H
+client.c:#include "config.h"
+client.c:#endif
+client.c:
+client.c:#include <assert.h>
+client.c:#include <fcntl.h>
+client.c:#include <stdbool.h>
+client.c:#include <stdio.h>
+client.c:#include <stdlib.h>
+client.c:#include <string.h>
+client.c:#include <sys/ipc.h>
+client.c:#include <sys/sem.h>
+client.c:#include <unistd.h>
+client.c:
+client.c:#include "master_client.h"
+client.c:
+client.c:// chaines possibles pour le premier parametre de la ligne de commande
+client.c:#define TK_STOP "stop"
+client.c:#define TK_COMPUTE "compute"
+client.c:#define TK_HOW_MANY "howmany"
+client.c:#define TK_HIGHEST "highest"
+client.c:#define TK_LOCAL "local"
+client.c:
+client.c:/************************************************************************
+client.c: * Usage et analyse des arguments passés en ligne de commande
+client.c: ************************************************************************/
+client.c:
+client.c:static void usage(const char *exeName, const char *message) {
+client.c:  fprintf(stderr, "usage : %s <ordre> [<nombre>]\n", exeName);
+client.c:  fprintf(stderr, "   ordre \"" TK_STOP "\" : arrêt master\n");
+client.c:  fprintf(stderr, "   ordre \"" TK_COMPUTE "\" : calcul de nombre premier\n");
+client.c:  fprintf(stderr, "                       <nombre> doit être fourni\n");
+client.c:  fprintf(stderr, "   ordre \"" TK_HOW_MANY
+client.c:                  "\" : combien de nombres premiers calculés\n");
+client.c:  fprintf(stderr, "   ordre \"" TK_HIGHEST
+client.c:                  "\" : quel est le plus grand nombre premier calculé\n");
+client.c:  fprintf(stderr,
+client.c:          "   ordre \"" TK_LOCAL "\" : calcul de nombres premiers en local\n");
+client.c:  if (message != NULL) fprintf(stderr, "message : %s\n", message);
+client.c:  exit(EXIT_FAILURE);
+client.c:}
+client.c:
+client.c:static int parseArgs(int argc, char *argv[], int *number) {
+client.c:  int order = ORDER_NONE;
+client.c:
+client.c:  if ((argc != 2) && (argc != 3))
+client.c:    usage(argv[0], "Nombre d'arguments incorrect");
+client.c:
+client.c:  if (strcmp(argv[1], TK_STOP) == 0)
+client.c:    order = ORDER_STOP;
+client.c:  else if (strcmp(argv[1], TK_COMPUTE) == 0)
+client.c:    order = ORDER_COMPUTE_PRIME;
+client.c:  else if (strcmp(argv[1], TK_HOW_MANY) == 0)
+client.c:    order = ORDER_HOW_MANY_PRIME;
+client.c:  else if (strcmp(argv[1], TK_HIGHEST) == 0)
+client.c:    order = ORDER_HIGHEST_PRIME;
+client.c:  else if (strcmp(argv[1], TK_LOCAL) == 0)
+client.c:    order = ORDER_COMPUTE_PRIME_LOCAL;
+client.c:
+client.c:  if (order == ORDER_NONE) usage(argv[0], "ordre incorrect");
+client.c:  if ((order == ORDER_STOP) && (argc != 2))
+client.c:    usage(argv[0], TK_STOP " : il ne faut pas de second argument");
+client.c:  if ((order == ORDER_COMPUTE_PRIME) && (argc != 3))
+client.c:    usage(argv[0], TK_COMPUTE " : il faut le second argument");
+client.c:  if ((order == ORDER_HOW_MANY_PRIME) && (argc != 2))
+client.c:    usage(argv[0], TK_HOW_MANY " : il ne faut pas de second argument");
+client.c:  if ((order == ORDER_HIGHEST_PRIME) && (argc != 2))
+client.c:    usage(argv[0], TK_HIGHEST " : il ne faut pas de second argument");
+client.c:  if ((order == ORDER_COMPUTE_PRIME_LOCAL) && (argc != 3))
+client.c:    usage(argv[0], TK_LOCAL " : il faut le second argument");
+client.c:  if ((order == ORDER_COMPUTE_PRIME) || (order == ORDER_COMPUTE_PRIME_LOCAL)) {
+client.c:    *number = strtol(argv[2], NULL, 10);
+client.c:    if (*number < 2) usage(argv[0], "le nombre doit être >= 2");
+client.c:  }
+client.c:
+client.c:  return order;
+client.c:}
+client.c:
+client.c:int main(int argc, char *argv[]) {
+client.c:  if (argc == 2 && strcmp(argv[1], "showworker") == 0) {
+client.c:    show_worker(argc, argv);
+client.c:    return 0;  // on ne parle pas au master dans ce mode
+client.c:  }
+client.c:
+client.c:  int number = 0;
+client.c:  int order = parseArgs(argc, argv, &number);
+client.c:
+client.c:  // ----- MODE LOCAL (3.3 bis) : indépendant du master -----
+client.c:  if (order == ORDER_COMPUTE_PRIME_LOCAL) {
+client.c:    printf("[CLIENT] Mode local : calcul des premiers jusqu'à %d\n", number);
+client.c:    mode_local(number);
+client.c:    return 0;
+client.c:  }
+client.c:
+client.c:  // --- Récupération des sémaphores ---
+client.c:  int key_mutex = ftok("master.c", 'M');
+client.c:  int key_sync = ftok("master.c", 'S');
+client.c:
+client.c:  int sem_mutex = semget(key_mutex, 1, 0666);
+client.c:  int sem_sync = semget(key_sync, 1, 0666);
+client.c:
+client.c:  assert(sem_mutex != -1);
+client.c:  assert(sem_sync != -1);
+client.c:
+client.c: 
+client.c:  // --- SECTION CRITIQUE ---
+client.c:  P(sem_mutex);
+client.c:
+client.c:  int fdOut = open(FIFO_CLIENT_TO_MASTER, O_WRONLY);
+client.c:  write(fdOut, &order, sizeof(order));
+client.c:  if (order == ORDER_COMPUTE_PRIME) write(fdOut, &number, sizeof(number));
+client.c:  close(fdOut);
+client.c:
+client.c:  int fdIn = open(FIFO_MASTER_TO_CLIENT, O_RDONLY);
+client.c:  int resultat = 0;
+client.c:  read(fdIn, &resultat, sizeof(resultat));
+client.c:  close(fdIn);
+client.c:
+client.c:  V(sem_mutex);  // libère le mutex pour un autre client
+client.c:  V(sem_sync);   // réveille le master (bloqué sur P(sem_sync))
+client.c:  // --- FIN SECTION CRITIQUE ---
+client.c:
+client.c:  clientInterpretOrder(order, number, resultat);
+client.c:  return 0;
+client.c:}
+config.h:#ifndef CONFIG_H
+config.h:#define CONFIG_H
+config.h:
+config.h:// uncomment to use verbose mode
+config.h://#define VERBOSE
+config.h:
+config.h:#ifdef VERBOSE
+config.h:    #define TRACE(x) fprintf(stderr, (x));
+config.h:    #define TRACE2(x,p1) fprintf(stderr, (x), (p1));
+config.h:#else
+config.h:    #define TRACE(x)
+config.h:    #define TRACE2(x,p1)
+config.h:#endif
+config.h:
+config.h:#endif
+Makefile:CC = gcc
+Makefile:CFLAGS = -g -Wall -Wextra -pedantic -std=c99
+Makefile:
+Makefile:all: master client worker
+Makefile:
+Makefile:master: master.c
+Makefile:	$(CC) $(CFLAGS) master.c master_client.c -o master
+Makefile:
+Makefile:client: client.c
+Makefile:	$(CC) $(CFLAGS) client.c master_client.c -o client
+Makefile:
+Makefile:worker: worker.c
+Makefile:	$(CC) $(CFLAGS) worker.c master_worker.c -o worker
+Makefile:
+Makefile:clean:
+Makefile:	rm client master worker
+master.c:#if defined HAVE_CONFIG_H
+master.c:#include "config.h"
+master.c:#endif
+master.c:
+master.c:#include <stdio.h>
+master.c:#include <stdlib.h>
+master.c:
+master.c:#include "master_client.h"
+master.c:#include "master_worker.h"
+master.c:
+master.c:
+master.c:#include <assert.h>
+master.c:#include <fcntl.h>
+master.c:#include <string.h>
+master.c:#include <sys/ipc.h>
+master.c:#include <sys/sem.h>
+master.c:#include <sys/stat.h>
+master.c:#include <unistd.h>
+master.c:
+master.c:
+master.c:// ========================
+master.c:// Données glowrite pipeMWles
+master.c:// ========================
+master.c:int last_tested = 1;    // dernier nombre testé
+master.c:int highest_prime = 0;  // plus grand premier trouvé
+master.c:int nb_primes = 0;      // combien de nombres premiers trouvés
+master.c:
+master.c:static void usage(const char *exe, const char *msg) {
+master.c:  fprintf(stderr, "usage : %s\n", exe);
+master.c:  if (msg) fprintf(stderr, "message : %s\n", msg);
+master.c:  exit(EXIT_FAILURE);
+master.c:}
+master.c:
+master.c:// ============================================================
+master.c:// order_compute : envoie les nombres au pipeline et lit les
+master.c:// résultats de façon BLOQUANTE, proprement.
+master.c:// ============================================================
+master.c:int order_compute(int nombre, int pipeMW[2], int pipeWM[2]) {
+master.c:  int resultat = 0;
+master.c:
+master.c:  // Cas 1 : on étend la zone de test jusqu'à "nombre"
+master.c:  if (nombre > last_tested) {
+master.c:    for (int i = last_tested + 1; i <= nombre; ++i) {
+master.c:      // envoyer i au pipeline
+master.c:      if (write(pipeMW[1], &i, sizeof(i)) != sizeof(i)) {
+master.c:        perror("[MASTER] wwrite pipeMW");
+master.c:        return 0;
+master.c:      }
+master.c:
+master.c:      // lire exactement 1 réponse pour i
+master.c:      int msg = 0;
+master.c:      if (read(pipeWM[0], &msg, sizeof(msg)) != sizeof(msg)) {
+master.c:        perror("[MASTER] read pipeWM");
+master.c:        return 0;
+master.c:      }
+master.c:
+master.c:      // si msg > 0, i est premier
+master.c:      if (msg > 0) {
+master.c:        highest_prime = msg;
+master.c:        nb_primes++;
+master.c:        printf("[MASTER] Nouveau premier trouvé : %d\n", msg);
+master.c:      }
+master.c:
+master.c:      // si c'était le dernier (== nombre), on mémorise son verdict
+master.c:      if (i == nombre) {
+master.c:        if (msg > 0) {
+master.c:          resultat = nombre;  // nombre  premier
+master.c:        } else {
+master.c:          resultat = 0;  // nombre pas premier
+master.c:        }
+master.c:      }
+master.c:    }
+master.c:
+master.c:    last_tested = nombre;
+master.c:  }
+master.c:  // Cas 2 : nombre <= last_tested -> on le reteste tout seul
+master.c:  else {
+master.c:    if (write(pipeMW[1], &nombre, sizeof(nombre)) != sizeof(nombre)) {
+master.c:      perror("[MASTER] write pipeMW (retest)");
+master.c:      return 0;
+master.c:    }
+master.c:
+master.c:    int msg = 0;
+master.c:    if (read(pipeWM[0], &msg, sizeof(msg)) != sizeof(msg)) {
+master.c:      perror("[MASTER] read pipeWM (retest)");
+master.c:      return 0;
+master.c:    }
+master.c:
+master.c:    if (msg > 0) {
+master.c:      // évite de gonfler nb_primes si c’est un premier déjà connu
+master.c:      if (msg > highest_prime) {
+master.c:        highest_prime = msg;
+master.c:        nb_primes++;
+master.c:        printf("[MASTER] Nouveau premier trouvé (retest) : %d\n", msg);
+master.c:      }
+master.c:      resultat = nombre;
+master.c:    } else {
+master.c:      resultat = 0;
+master.c:    }
+master.c:  }
+master.c:
+master.c:  if (resultat != 0)
+master.c:    printf("[MASTER] SUCCESS : %d est premier\n", nombre);
+master.c:  else
+master.c:    printf("[MASTER] FAIL : %d n'est pas premier\n", nombre);
+master.c:
+master.c:  return resultat;
+master.c:}
+master.c:
+master.c:// ============================================================
+master.c:// Boucle principale
+master.c:// ============================================================
+master.c:void loop(int sem_sync, int pipeMW[2], int pipeWM[2]) {
+master.c:  while (1) {
+master.c:    printf("[MASTER] Attente d'un client...\n");
+master.c:
+master.c:    int order = ORDER_NONE;
+master.c:    int number = 0;
+master.c:
+master.c:    // ---- lire la requête du client ----
+master.c:    int fdIn = open(FIFO_CLIENT_TO_MASTER, O_RDONLY);
+master.c:    
+master.c:    read(fdIn, &order, sizeof(order));
+master.c:
+master.c:    if (order == ORDER_COMPUTE_PRIME) {
+master.c:      if (read(fdIn, &number, sizeof(number)) != sizeof(number)) {
+master.c:        perror("[MASTER] read number");
+master.c:        close(fdIn);
+master.c:        continue;
+master.c:      }
+master.c:      printf("[MASTER] Reçu COMPUTE %d\n", number);
+master.c:    } else if (order == ORDER_STOP) {
+master.c:      printf("[MASTER] Reçu STOP\n");
+master.c:    } else if (order == ORDER_HOW_MANY_PRIME) {
+master.c:      printf("[MASTER] Reçu HOW_MANY\n");
+master.c:    } else if (order == ORDER_HIGHEST_PRIME) {
+master.c:      printf("[MASTER] Reçu HIGHEST\n");
+master.c:    }
+master.c:
+master.c:    close(fdIn);
+master.c:
+master.c:    // ---- traitement ----
+master.c:    int resultat = 0;
+master.c:
+master.c:    if (order == ORDER_COMPUTE_PRIME) {
+master.c:      resultat = order_compute(number, pipeMW, pipeWM);
+master.c:    } else if (order == ORDER_HIGHEST_PRIME) {
+master.c:      resultat = highest_prime;
+master.c:    } else if (order == ORDER_HOW_MANY_PRIME) {
+master.c:      resultat = nb_primes;
+master.c:    } else if (order == ORDER_STOP) {
+master.c:      resultat = 0;  // ACK STOP
+master.c:    }
+master.c:
+master.c:    // ---- envoyer la réponse au client ----
+master.c:    int fdOut = open(FIFO_MASTER_TO_CLIENT, O_WRONLY);
+master.c:    if (fdOut == -1) {
+master.c:      perror("[MASTER] open FIFO_MASTER_TO_CLIENT");
+master.c:    } else {
+master.c:      if (write(fdOut, &resultat, sizeof(resultat)) != sizeof(resultat)) {
+master.c:        perror("[MASTER] write resultat");
+master.c:      }
+master.c:      close(fdOut);
+master.c:    }
+master.c:
+master.c:    // ---- attendre que le client ait fini de lire ----
+master.c:    P(sem_sync);
+master.c:
+master.c:    // ---- gestion du STOP ----
+master.c:    if (order == ORDER_STOP) {
+master.c:      int stopVal = -1;
+master.c:      write(pipeMW[1], &stopVal,
+master.c:            sizeof(stopVal));  // propage stop dans le pipeline
+master.c:      break;
+master.c:    }
+master.c:  }
+master.c:}
+master.c:
+master.c:// ============================================================
+master.c:// main
+master.c:// ============================================================
+master.c:int main(int argc, char *argv[]) {
+master.c:  if (argc != 1) usage(argv[0], NULL);
+master.c:
+master.c:  printf("[MASTER] Démarrage du master (pipeline Hoare stable)\n");
+master.c:
+master.c:  createFifos();
+master.c:
+master.c:  // --- sémaphores ---
+master.c:  int key_mutex = ftok("master.c", 'M');
+master.c:  int key_sync = ftok("master.c", 'S');
+master.c:
+master.c:  int sem_mutex = semget(key_mutex, 1, IPC_CREAT | 0666);
+master.c:  int sem_sync = semget(key_sync, 1, IPC_CREAT | 0666);
+master.c:
+master.c:  semctl(sem_mutex, 0, SETVAL, 1);  // mutex client
+master.c:  semctl(sem_sync, 0, SETVAL, 0);   // sync client/master
+master.c:
+master.c:  // --- pipes pour le pipeline Hoare ---
+master.c:  int pipeMW[2], pipeWM[2];
+master.c:
+master.c:  pipe(pipeMW);
+master.c:  pipe(pipeWM);
+master.c:  // --- création du premier worker (prime = 2) ---
+master.c:  int pid = fork();
+master.c:
+master.c:  if (pid == 0) {
+master.c:    // process worker
+master.c:    closePipes(pipeMW[1], pipeWM[0]);
+master.c:
+master.c:    char rStr[10], wStr[10], pStr[10];
+master.c:    snprintf(rStr, sizeof(rStr), "%d", pipeMW[0]);
+master.c:    snprintf(wStr, sizeof(wStr), "%d", pipeWM[1]);
+master.c:    snprintf(pStr, sizeof(pStr), "%d", 2);
+master.c:
+master.c:    char *args[] = {"worker", rStr, wStr, pStr, NULL};
+master.c:    execv("./worker", args);
+master.c:    perror("execv");
+master.c:    exit(EXIT_FAILURE);
+master.c:  }
+master.c:
+master.c:  // process master
+master.c:  closePipes(pipeMW[0], pipeWM[1]);
+master.c:
+master.c:  // lire le tout premier premier envoyé par le worker 2
+master.c:  int firstPrime = 0;
+master.c:  read(pipeWM[0], &firstPrime, sizeof(firstPrime));
+master.c:  highest_prime = firstPrime;  // normalement 2
+master.c:  nb_primes = 1;
+master.c:  last_tested = firstPrime;
+master.c:  printf("[MASTER] Premier premier trouvé : %d\n", firstPrime);
+master.c:
+master.c:  // boucle principale
+master.c:  loop(sem_sync, pipeMW, pipeWM);
+master.c:
+master.c:  // nettoyage
+master.c:  closePipes(pipeMW[1], pipeWM[0]);
+master.c:  unlinkPipes();
+master.c:  resetSemaphore(sem_mutex, sem_sync);
+master.c:
+master.c:  printf("[MASTER] Fermeture propre.\n");
+master.c:  return 0;
+master.c:}
+master_client.c:#if defined HAVE_CONFIG_H
+master_client.c:#include "config.h"
+master_client.c:#endif
+master_client.c:
+master_client.c:#define _XOPEN_SOURCE
+master_client.c:
+master_client.c:#include <assert.h>
+master_client.c:#include <pthread.h>
+master_client.c:#include <stdbool.h>
+master_client.c:#include <stdio.h>
+master_client.c:#include <stdlib.h>
+master_client.c:#include <string.h>
+master_client.c:#include <sys/ipc.h>
+master_client.c:#include <sys/sem.h>
+master_client.c:#include <sys/stat.h>  // <-- pour mkfifo()
+master_client.c:#include <unistd.h>    // <-- pour close() et unlink()
+master_client.c:
+master_client.c:#include "master_client.h"
+master_client.c:
+master_client.c:// sema
+master_client.c:void P(int semid) {
+master_client.c:  struct sembuf op = {0, -1, 0};
+master_client.c:  if (semop(semid, &op, 1) == -1) {
+master_client.c:    perror("semop P");
+master_client.c:    assert(0);
+master_client.c:  }
+master_client.c:}
+master_client.c:
+master_client.c:void V(int semid) {
+master_client.c:  struct sembuf op = {0, +1, 0};
+master_client.c:  if (semop(semid, &op, 1) == -1) {
+master_client.c:    perror("semop V");
+master_client.c:    assert(0);
+master_client.c:  }
+master_client.c:}
+master_client.c:
+master_client.c:void resetSemaphore(int sem1, int sem2) {
+master_client.c:  semctl(sem1, 0, IPC_RMID);
+master_client.c:  semctl(sem2, 0, IPC_RMID);
+master_client.c:}
+master_client.c:
+master_client.c:// fonctions éventuelles internes au fichier
+master_client.c:void createFifos() {
+master_client.c:  mkfifo(FIFO_CLIENT_TO_MASTER, 0666);
+master_client.c:  mkfifo(FIFO_MASTER_TO_CLIENT, 0666);
+master_client.c:}
+master_client.c:
+master_client.c:void closePipes(int pipe1, int pipe2) {
+master_client.c:  close(pipe1);
+master_client.c:  close(pipe2);
+master_client.c:}
+master_client.c:
+master_client.c:void unlinkPipes() {
+master_client.c:  unlink(FIFO_CLIENT_TO_MASTER);  // supprimer la FIFO client->master
+master_client.c:  unlink(FIFO_MASTER_TO_CLIENT);  // supprimer la FIFO master->client
+master_client.c:}
+master_client.c:
+master_client.c:/* client */
+master_client.c:void clientInterpretOrder(int order, int number, int resultat) {
+master_client.c:  switch (order) {
+master_client.c:    case ORDER_COMPUTE_PRIME:
+master_client.c:      if (resultat)
+master_client.c:        printf("[CLIENT] %d est premier\n", number);
+master_client.c:      else
+master_client.c:        printf("[CLIENT] %d n'est pas premier\n", number);
+master_client.c:      break;
+master_client.c:
+master_client.c:    case ORDER_HOW_MANY_PRIME:
+master_client.c:      printf("[CLIENT] %d nombres premiers ont été trouvés\n", resultat);
+master_client.c:      break;
+master_client.c:
+master_client.c:    case ORDER_HIGHEST_PRIME:
+master_client.c:      printf("[CLIENT] Le plus grand nombre premier trouvé est %d\n", resultat);
+master_client.c:      break;
+master_client.c:
+master_client.c:    case ORDER_STOP:
+master_client.c:      printf("[CLIENT] Master arrêté (code retour %d)\n", resultat);
+master_client.c:      break;
+master_client.c:
+master_client.c:    default:
+master_client.c:      printf("[CLIENT] Ordre inconnu (%d), résultat brut = %d\n", order,
+master_client.c:             resultat);
+master_client.c:      break;
+master_client.c:  }
+master_client.c:}
+master_client.c:
+master_client.c:void clientSendOrder(int fdOut, int order, int number) {
+master_client.c:  // Envoi ordre
+master_client.c:  if (write(fdOut, &order, sizeof(order)) != sizeof(order)) {
+master_client.c:    perror("[CLIENT] write ordre");
+master_client.c:    return;
+master_client.c:  }
+master_client.c:
+master_client.c:  // Envoi paramètre si nécessaire
+master_client.c:  if (order == ORDER_COMPUTE_PRIME) {
+master_client.c:    if (write(fdOut, &number, sizeof(number)) != sizeof(number)) {
+master_client.c:      perror("[CLIENT] write number");
+master_client.c:      return;
+master_client.c:    }
+master_client.c:    printf("[CLIENT] Envoi de l'ordre COMPUTE pour %d au master\n", number);
+master_client.c:  }
+master_client.c:
+master_client.c:  else if (order == ORDER_STOP) {
+master_client.c:    printf("[CLIENT] Envoi de l'ordre STOP au master\n");
+master_client.c:  }
+master_client.c:
+master_client.c:  else if (order == ORDER_HOW_MANY_PRIME) {
+master_client.c:    printf("[CLIENT] Envoi HOW_MANY au master\n");
+master_client.c:  }
+master_client.c:
+master_client.c:  else if (order == ORDER_HIGHEST_PRIME) {
+master_client.c:    printf("[CLIENT] Envoi HIGHEST au master\n");
+master_client.c:  }
+master_client.c:}
+master_client.c:
+master_client.c:int mysqrt(int n) {
+master_client.c:  if (n <= 0) return 0;
+master_client.c:  int x = n;
+master_client.c:  int y = (x + 1) / 2;
+master_client.c:
+master_client.c:  while (y < x) {
+master_client.c:    x = y;
+master_client.c:    y = (x + n / x) / 2;
+master_client.c:  }
+master_client.c:  return x;  // valeur entière de sqrt(n)
+master_client.c:}
+master_client.c:
+master_client.c:typedef struct {
+master_client.c:  bool *tab;
+master_client.c:  int limit;
+master_client.c:  int div;
+master_client.c:  pthread_mutex_t *mutex;
+master_client.c:} ThreadArgs;
+master_client.c:
+master_client.c:void *threadMark(void *arg) {
+master_client.c:  ThreadArgs *a = (ThreadArgs *)arg;
+master_client.c:  int d = a->div;
+master_client.c:  int N = a->limit;
+master_client.c:
+master_client.c:  for (int k = 2 * d; k <= N; k += d) {
+master_client.c:    pthread_mutex_lock(a->mutex);
+master_client.c:    a->tab[k] = false;
+master_client.c:    pthread_mutex_unlock(a->mutex);
+master_client.c:  }
+master_client.c:
+master_client.c:  return NULL;
+master_client.c:}
+master_client.c:
+master_client.c:void mode_local(int number) {
+master_client.c:  // =======================
+master_client.c:  // 1) tab booléens
+master_client.c:  // =======================
+master_client.c:
+master_client.c:  bool *tab = malloc(sizeof(bool) * (number + 1));
+master_client.c:
+master_client.c:  for (int i = 2; i <= number; i++) {
+master_client.c:    tab[i] = true;
+master_client.c:  }
+master_client.c:
+master_client.c:  // =======================
+master_client.c:  // 2) preparer threads
+master_client.c:  // =======================
+master_client.c:
+master_client.c:  pthread_mutex_t mutex;
+master_client.c:  pthread_mutex_init(&mutex, NULL);
+master_client.c:
+master_client.c:  int max = mysqrt(number);
+master_client.c:  int nbThreads = max - 1;  // pour diviseurs = 2...max
+master_client.c:
+master_client.c:  pthread_t *tids = malloc(sizeof(pthread_t) * nbThreads);
+master_client.c:  ThreadArgs *args = malloc(sizeof(ThreadArgs) * nbThreads);
+master_client.c:
+master_client.c:  // =======================
+master_client.c:  // 3) create threads
+master_client.c:  // =======================
+master_client.c:
+master_client.c:  for (int i = 0; i < nbThreads; i++) {
+master_client.c:    args[i].tab = tab;
+master_client.c:    args[i].limit = number;
+master_client.c:    args[i].div = i + 2;  // diviseur = 2, 3, 4...
+master_client.c:    args[i].mutex = &mutex;
+master_client.c:
+master_client.c:    pthread_create(&tids[i], NULL, threadMark, &args[i]);
+master_client.c:  }
+master_client.c:
+master_client.c:  // =======================
+master_client.c:  // 4) join les threads
+master_client.c:  // =======================
+master_client.c:
+master_client.c:  for (int i = 0; i < nbThreads; i++) {
+master_client.c:    pthread_join(tids[i], NULL);
+master_client.c:  }
+master_client.c:
+master_client.c:  pthread_mutex_destroy(&mutex);
+master_client.c:
+master_client.c:  // =======================
+master_client.c:  // 5) print nombres premiers
+master_client.c:  // =======================
+master_client.c:
+master_client.c:  printf("Premiers trouvés jusqu'à %d :\n", number);
+master_client.c:  for (int i = 2; i <= number; i++) {
+master_client.c:    if (tab[i]) {
+master_client.c:      printf("%d ", i);
+master_client.c:    }
+master_client.c:  }
+master_client.c:
+master_client.c:  printf("\n");
+master_client.c:
+master_client.c:  free(tab);
+master_client.c:  free(tids);
+master_client.c:  free(args);
+master_client.c:}
+master_client.c:
+master_client.c:void show_worker(int argc, char *argv[]) {
+master_client.c:  /* ======= MODE SPÉCIAL : ./client showworker ======= */
+master_client.c:  if (argc == 2 && strcmp(argv[1], "showworker") == 0) {
+master_client.c:    fprintf(stdout, "ps -C worker -o stat,cmd | grep -E 'R|S|D|I'\n");
+master_client.c:    system("ps -C worker -o stat,cmd | grep -E 'R|S|D|I'");
+master_client.c:  }
+master_client.c:  /* ================================================== */
+master_client.c:}
+master_client.h:#ifndef CLIENT_CRIBLE
+master_client.h:#define CLIENT_CRIBLE
+master_client.h:
+master_client.h:// On peut mettre ici des éléments propres au couple master/client :
+master_client.h://    - des constantes pour rendre plus lisible les comunications
+master_client.h://    - des fonctions communes (création tubes, écriture dans un tube,
+master_client.h://      manipulation de sémaphores, ...)
+master_client.h:
+master_client.h:// ordres possibles pour le master
+master_client.h:#define ORDER_NONE 0
+master_client.h:#define ORDER_STOP -1
+master_client.h:#define ORDER_COMPUTE_PRIME 1
+master_client.h:#define ORDER_HOW_MANY_PRIME 2
+master_client.h:#define ORDER_HIGHEST_PRIME 3
+master_client.h:#define ORDER_COMPUTE_PRIME_LOCAL 4  // ne concerne pas le master
+master_client.h:#define ORDER_SHOW //montre les processus lancé
+master_client.h:
+master_client.h:#define FIFO_CLIENT_TO_MASTER "client_to_master.fifo"
+master_client.h:#define FIFO_MASTER_TO_CLIENT "master_to_client.fifo"
+master_client.h:
+master_client.h:void V(int semid);
+master_client.h:void P(int semid);
+master_client.h:void resetSemaphore(int sem1, int sem2);
+master_client.h:void createFifos();
+master_client.h:void closePipes(int pipe1, int pipe2);
+master_client.h:void unlinkPipes();
+master_client.h:void clientInterpretOrder(int order, int number, int resultat);
+master_client.h:void clientSendOrder(int fdOut, int order, int number);
+master_client.h:int mysqrt(int n);
+master_client.h:void *threadMark(void *arg);
+master_client.h:void mode_local(int number);
+master_client.h:void show_worker(int argc, char *argv[]);
+master_client.h:
+master_client.h:// bref n'hésitez à mettre nombre de fonctions avec des noms explicites
+master_client.h:// pour masquer l'implémentation
+master_client.h:
+master_client.h:#endif
+master_worker.c:#if defined HAVE_CONFIG_H
+master_worker.c:#include "config.h"
+master_worker.c:#endif
+master_worker.c:
+master_worker.c:#include <stdlib.h>
+master_worker.c:#include <stdio.h>
+master_worker.c:
+master_worker.c:#include "master_worker.h"
+master_worker.c:
+master_worker.c:// fonctions éventuelles internes au fichier
+master_worker.c:
+master_worker.c:// fonctions éventuelles proposées dans le .h
+master_worker.h:#ifndef MASTER_WORKER_H
+master_worker.h:#define MASTER_WORKER_H
+master_worker.h:
+master_worker.h:// On peut mettre ici des éléments propres au couple master/worker :
+master_worker.h://    - des constantes pour rendre plus lisible les comunications
+master_worker.h://    - des fonctions communes (écriture dans un tube, ...)
+master_worker.h:
+master_worker.h:
+master_worker.h:#endif
+myassert.c:#ifdef HAVE_CONFIG
+myassert.c:#include "config.h"
+myassert.c:#endif
+myassert.c:
+myassert.c:/*****************************************************************************
+myassert.c: * auteur : Gilles Subrenat
+myassert.c: *
+myassert.c: * fichier : myassert.c
+myassert.c: *
+myassert.c: * note :
+myassert.c: *****************************************************************************/
+myassert.c:
+myassert.c:#include <stdio.h>
+myassert.c:#include <stdlib.h>
+myassert.c:#include <sys/types.h>
+myassert.c:#include <unistd.h>
+myassert.c:
+myassert.c:#include "myassert.h"
+myassert.c:
+myassert.c:void myassert_func(bool condition, const char *message, const char *fileName,
+myassert.c:                   const char *functionName, int line)
+myassert.c:{
+myassert.c:    if (! condition)
+myassert.c:    {
+myassert.c:        fprintf(stderr, "/---------------------------\n");
+myassert.c:        fprintf(stderr, "| Erreur détectée !\n");
+myassert.c:        fprintf(stderr, "|       fichier  : %s\n", fileName);
+myassert.c:        fprintf(stderr, "|       ligne    : %d\n", line);
+myassert.c:        fprintf(stderr, "|       fonction : %s\n", functionName);
+myassert.c:        fprintf(stderr, "|       pid      : %d\n", getpid());
+myassert.c:        fprintf(stderr, "|    Message :\n");
+myassert.c:        fprintf(stderr, "|       -> %s\n", message);
+myassert.c:        fprintf(stderr, "|    Message systeme:\n");
+myassert.c:        fprintf(stderr, "|       -> ");
+myassert.c:        perror("");
+myassert.c:        fprintf(stderr, "|    On stoppe le programme\n");
+myassert.c:        fprintf(stderr, "\\---------------------------\n");
+myassert.c:        exit(EXIT_FAILURE);
+myassert.c:    }
+myassert.c:}
+myassert.h:/*****************************************************************************
+myassert.h: * auteur : Gilles Subrenat
+myassert.h: *
+myassert.h: * fichier : myassert.h
+myassert.h: *
+myassert.h: * note :
+myassert.h: *     Utiliser uniquement la macro myassert
+myassert.h: *        arg1 : booleen : si false, une erreur est déclenchée et le
+myassert.h: *                         programme s'arrête
+myassert.h: *        arg2 : string  : message à afficher en cas d'erreur
+myassert.h: *     note : définir la macro NDEBUG désactive le myassert
+myassert.h: *
+myassert.h: * exemple d'appel :
+myassert.h: *   void f(int n)
+myassert.h: *   {
+myassert.h: *       myassert(n > 0, "n doit être positif");
+myassert.h: *       ...
+myassert.h: *   }
+myassert.h: *   si NDEBUG est défini
+myassert.h: *       il ne se passe rien et la fonction s'exécute sans erreur ou non
+myassert.h: *       selon la valeur de n
+myassert.h: *   sinon si n est positif
+myassert.h: *       il ne se passe rien et la fonction s'exécute sans erreur
+myassert.h: *   sinon
+myassert.h: *       le programme s'arrête avec un message d'erreur complet
+myassert.h: *****************************************************************************/
+myassert.h:
+myassert.h:#ifndef MYASSERT_H
+myassert.h:#define MYASSERT_H
+myassert.h:
+myassert.h:    #ifndef NDEBUG
+myassert.h:        #include <stdbool.h>
+myassert.h:        void myassert_func(bool condition, const char *message, const char *filename,
+myassert.h:                           const char *functionName, int line);
+myassert.h:       #define myassert(condition, message) myassert_func((condition), (message), __FILE__, __func__, __LINE__)
+myassert.h:    #else
+myassert.h:       #define myassert(condition, message)
+myassert.h:    #endif
+myassert.h:
+myassert.h:#endif
+rmsempipe.sh:#!/bin/bash
+rmsempipe.sh:
+rmsempipe.sh:DROITS=641
+rmsempipe.sh:nb=`ipcs -s | grep $USER | grep $DROITS | wc -l`
+rmsempipe.sh:
+rmsempipe.sh:if [ $nb -eq 0 ]
+rmsempipe.sh:then
+rmsempipe.sh:    echo "aucun sémaphore à détruire"
+rmsempipe.sh:else
+rmsempipe.sh:    pluriel=""
+rmsempipe.sh:    if [ $nb -gt 1 ]; then pluriel="s"; fi
+rmsempipe.sh:    echo "vous avez $nb sémaphore$pluriel non détruit$pluriel";
+rmsempipe.sh:
+rmsempipe.sh:    for id in `ipcs -s | grep $USER | grep $DROITS | awk '{print $2;}'`
+rmsempipe.sh:    do
+rmsempipe.sh:        echo "  destruction sémaphore " $id
+rmsempipe.sh:        ipcrm -s $id
+rmsempipe.sh:    done
+rmsempipe.sh:
+rmsempipe.sh:    nb=`ipcs -s | grep $USER | grep $DROITS | wc -l`
+rmsempipe.sh:    pluriel=""
+rmsempipe.sh:    if [ $nb -gt 1 ]; then pluriel="s"; fi
+rmsempipe.sh:    echo "il reste $nb sémaphore$pluriel non détruit$pluriel";
+rmsempipe.sh:fi
+rmsempipe.sh:
+rmsempipe.sh:
+rmsempipe.sh:c2m="nom_du_tube_client_vers_master"
+rmsempipe.sh:m2c="nom_du_tube_master_vers_client"
+rmsempipe.sh:
+rmsempipe.sh:if [ ! -p $c2m ]
+rmsempipe.sh:then
+rmsempipe.sh:    echo "pas de tube client vers master"
+rmsempipe.sh:else
+rmsempipe.sh:    echo "tube client vers master détruit"
+rmsempipe.sh:    /bin/rm $c2m
+rmsempipe.sh:fi
+rmsempipe.sh:
+rmsempipe.sh:if [ ! -p $m2c ]
+rmsempipe.sh:then
+rmsempipe.sh:    echo "pas de tube master vers client"
+rmsempipe.sh:else
+rmsempipe.sh:    echo "tube master vers client détruit"
+rmsempipe.sh:    /bin/rm $m2c
+rmsempipe.sh:fi
+rmsempipe.sh:
+worker.c:#if defined HAVE_CONFIG_H
+worker.c:#include "config.h"
+worker.c:#endif
+worker.c:
+worker.c:#include <stdio.h>
+worker.c:#include <stdlib.h>
+worker.c:#include <assert.h>
+worker.c:#include <fcntl.h>
+worker.c:#include <sys/wait.h>
+worker.c:#include <unistd.h>
+worker.c:
+worker.c:#include "master_worker.h"
+worker.c:
+worker.c:/************************************************************************
+worker.c: * Usage et analyse des arguments passés en ligne de commande
+worker.c: ************************************************************************/
+worker.c:
+worker.c:static void usage(const char *exeName, const char *message) {
+worker.c:  fprintf(stderr, "usage : %s <n> <fdIn> <fdToMaster>\n", exeName);
+worker.c:  fprintf(stderr, "   <n> : nombre premier géré par le worker\n");
+worker.c:  fprintf(stderr, "   <fdIn> : canal d'entrée pour tester un nombre\n");
+worker.c:  fprintf(stderr,
+worker.c:          "   <fdToMaster> : canal de sortie pour indiquer si un nombre est "
+worker.c:          "premier ou non\n");
+worker.c:  if (message != NULL) fprintf(stderr, "message : %s\n", message);
+worker.c:  exit(EXIT_FAILURE);
+worker.c:}
+worker.c:
+worker.c:static void parseArgs(int argc, char *argv[]) {
+worker.c:  if (argc != 4) usage(argv[0], "Nombre d'arguments incorrect");
+worker.c:}
+worker.c:
+worker.c:/* =====================================================================
+worker.c: * Boucle principale d’un worker du crible Hoare
+worker.c: * ===================================================================== */
+worker.c:void loop(int fdRead, int *hasNext, int nextPipe[2], int fdWriteMaster,
+worker.c:          int myPrime, int *nextPid) {
+worker.c:  while (1) {
+worker.c:    int n = 0;
+worker.c:    int r = read(fdRead, &n, sizeof(int));
+worker.c:
+worker.c:    if (r == 0) break;
+worker.c:
+worker.c:    /* --- CAS STOP --- */
+worker.c:    if (n == -1) {
+worker.c:      if (*hasNext) {
+worker.c:        write(nextPipe[1], &n, sizeof(int));
+worker.c:        close(nextPipe[1]);
+worker.c:        waitpid(*nextPid, NULL, 0);
+worker.c:      }
+worker.c:
+worker.c:      printf("[WORKER %d] reçoit STOP\n", myPrime);
+worker.c:      break;
+worker.c:    }
+worker.c:
+worker.c:    /* --- CAS N == PRIME : SUCCES --- */
+worker.c:    if (n == myPrime) {
+worker.c:      write(fdWriteMaster, &n, sizeof(int));
+worker.c:      continue;
+worker.c:    }
+worker.c:
+worker.c:    /* --- CAS divisible : ECHEC --- */
+worker.c:    if (n % myPrime == 0) {
+worker.c:      int fail = 0;
+worker.c:      write(fdWriteMaster, &fail, sizeof(int));
+worker.c:      continue;
+worker.c:    }
+worker.c:
+worker.c:    /* --- CAS N NON DIVISIBLE : transmettre au suivant --- */
+worker.c:    if (!(*hasNext)) {
+worker.c:      *hasNext = 1;
+worker.c:      assert(pipe(nextPipe) == 0);
+worker.c:
+worker.c:      *nextPid = fork();
+worker.c:      assert(*nextPid != -1);
+worker.c:
+worker.c:      if (*nextPid == 0) {
+worker.c:        close(nextPipe[1]);
+worker.c:
+worker.c:        char fdReadStr[10], fdWriteStr[10], primeStr[10];
+worker.c:        snprintf(fdReadStr, sizeof(fdReadStr), "%d", nextPipe[0]);
+worker.c:        snprintf(fdWriteStr, sizeof(fdWriteStr), "%d", fdWriteMaster);
+worker.c:        snprintf(primeStr, sizeof(primeStr), "%d", n);
+worker.c:
+worker.c:        char *args[] = {"worker", fdReadStr, fdWriteStr, primeStr, NULL};
+worker.c:        execv("./worker", args);
+worker.c:        perror("execv");
+worker.c:        exit(EXIT_FAILURE);
+worker.c:      }
+worker.c:
+worker.c:      close(nextPipe[0]);
+worker.c:      printf("[WORKER %d] a créé worker %d (pid=%d)\n", myPrime, n, *nextPid);
+worker.c:
+worker.c:    } else {
+worker.c:      write(nextPipe[1], &n, sizeof(int));
+worker.c:    }
+worker.c:  }
+worker.c:}
+worker.c:
+worker.c:/* ======================================================================
+worker.c: *  MAIN
+worker.c: * ===================================================================== */
+worker.c:int main(int argc, char *argv[]) {
+worker.c:  parseArgs(argc, argv);
+worker.c:
+worker.c:  int fdRead = atoi(argv[1]);
+worker.c:  int fdWriteMaster = atoi(argv[2]);
+worker.c:  int myPrime = atoi(argv[3]);
+worker.c:
+worker.c:  printf("[WORKER] (pid=%d) : gère %d\n", getpid(), myPrime);
+worker.c:
+worker.c:  /* au démarrage, un worker renvoie immédiatement son premier au master */
+worker.c:  write(fdWriteMaster, &myPrime, sizeof(myPrime));
+worker.c:
+worker.c:  int nextPipe[2] = {-1, -1};
+worker.c:  int nextPid = -1;
+worker.c:  int hasNext = 0;
+worker.c:
+worker.c:  loop(fdRead, &hasNext, nextPipe, fdWriteMaster, myPrime, &nextPid);
+worker.c:
+worker.c:  if (hasNext) {
+worker.c:    close(nextPipe[1]);
+worker.c:    waitpid(nextPid, NULL, 0);
+worker.c:  }
+worker.c:
+worker.c:  printf("[WORKER %d] (pid=%d) : terminé\n", myPrime, getpid());
+worker.c:
+worker.c:  return EXIT_SUCCESS;
+worker.c:}
