@@ -11,9 +11,9 @@
 #include <sys/ipc.h>
 #include <sys/sem.h>
 #include <unistd.h>
-#include "myassert.h"
 
 #include "master_client.h"
+#include "myassert.h"
 
 // chaines possibles pour le premier parametre de la ligne de commande
 #define TK_STOP "stop"
@@ -98,25 +98,25 @@ int main(int argc, char *argv[]) {
   int key_sync = ftok("master.c", 'S');
 
   myassert(key_mutex != -1, "ftok(\"master.c\", 'M') a échoué");
-  myassert(key_sync  != -1, "ftok(\"master.c\", 'S') a échoué");
+  myassert(key_sync != -1, "ftok(\"master.c\", 'S') a échoué");
 
   int sem_mutex = semget(key_mutex, 1, 0666);
   int sem_sync = semget(key_sync, 1, 0666);
 
   myassert(sem_mutex != -1, "semget(sem_mutex) a échoué");
-  myassert(sem_sync  != -1, "semget(sem_sync) a échoué");
- 
+  myassert(sem_sync != -1, "semget(sem_sync) a échoué");
+
   // --- SECTION CRITIQUE ---
   P(sem_mutex);
 
   int fdOut = open(FIFO_CLIENT_TO_MASTER, O_WRONLY);
- int w = write(fdOut, &order, sizeof(order));
-myassert(w == (int)sizeof(order),"write ordre vers le master a échoué");
+  int w = write(fdOut, &order, sizeof(order));
+  myassert(w == (int)sizeof(order), "write ordre vers le master a échoué");
 
-if (order == ORDER_COMPUTE_PRIME){
-  w = write(fdOut, &number, sizeof(number));
-  myassert(w == (int)sizeof(number),"write nombre vers le master a échoué");
-}
+  if (order == ORDER_COMPUTE_PRIME) {
+    w = write(fdOut, &number, sizeof(number));
+    myassert(w == (int)sizeof(number), "write nombre vers le master a échoué");
+  }
   myassert(close(fdOut) != -1, "close(fdOut) a échoué");
 
   int fdIn = open(FIFO_MASTER_TO_CLIENT, O_RDONLY);
@@ -124,9 +124,10 @@ if (order == ORDER_COMPUTE_PRIME){
 
   int resultat = 0;
   int r = read(fdIn, &resultat, sizeof(resultat));
-  myassert(r == (int)sizeof(resultat),"read résultat depuis le master a échoué");
+  myassert(r == (int)sizeof(resultat),
+           "read résultat depuis le master a échoué");
   myassert(close(fdIn) != -1, "close(fdIn) a échoué");
-  
+
   V(sem_mutex);  // libère le mutex pour un autre client
   V(sem_sync);   // réveille le master (bloqué sur P(sem_sync))
   // --- FIN SECTION CRITIQUE ---

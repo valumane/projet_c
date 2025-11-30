@@ -39,12 +39,12 @@ void resetSemaphore(int sem1, int sem2) {
 
 // fonctions éventuelles internes au fichier
 void createFifos() {
-  int r = mkfifo(FIFO_CLIENT_TO_MASTER, 0666);
+  int r = mkfifo(FIFO_CLIENT_TO_MASTER, 0641);
   if (r == -1 && errno != EEXIST) {
     myassert(false, "mkfifo(FIFO_CLIENT_TO_MASTER) a échoué");
   }
 
-  r = mkfifo(FIFO_MASTER_TO_CLIENT, 0666);
+  r = mkfifo(FIFO_MASTER_TO_CLIENT, 0641);
   if (r == -1 && errno != EEXIST) {
     myassert(false, "mkfifo(FIFO_MASTER_TO_CLIENT) a échoué");
   }
