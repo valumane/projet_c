@@ -45,7 +45,8 @@ void loop(int fdRead, int *hasNext, int nextPipe[2], int fdWriteMaster,
     /* --- CAS STOP --- */
     if (n == -1) {
       if (*hasNext) {
-        int w = write(nextPipe[1], &n, sizeof(int));
+        write(nextPipe[1], &n, sizeof(int));
+
         waitpid(*nextPid, NULL, 0);
         *hasNext = 0;  // déjà nettoyé, rien à refaire après la boucle
       }
@@ -56,14 +57,14 @@ void loop(int fdRead, int *hasNext, int nextPipe[2], int fdWriteMaster,
 
     /* --- CAS N == PRIME : SUCCES --- */
     if (n == myPrime) {
-      int w = write(fdWriteMaster, &n, sizeof(int));
+      write(fdWriteMaster, &n, sizeof(int));
       continue;
     }
 
     /* --- CAS divisible : ECHEC --- */
     if (n % myPrime == 0) {
       int fail = 0;
-      int w = write(fdWriteMaster, &fail, sizeof(int));
+      write(fdWriteMaster, &fail, sizeof(int));
       continue;
     }
 
@@ -87,7 +88,7 @@ void loop(int fdRead, int *hasNext, int nextPipe[2], int fdWriteMaster,
       printf("[WORKER %d] a créé worker %d (pid=%d)\n", myPrime, n, *nextPid);
 
     } else {
-      int w = write(nextPipe[1], &n, sizeof(int));
+      write(nextPipe[1], &n, sizeof(int));
     }
   }
 }
@@ -105,7 +106,7 @@ int main(int argc, char *argv[]) {
   printf("[WORKER] (pid=%d) : gère %d\n", getpid(), myPrime);
 
   /* au démarrage, un worker renvoie immédiatement son premier au master */
-  int w = write(fdWriteMaster, &myPrime, sizeof(myPrime));
+  write(fdWriteMaster, &myPrime, sizeof(myPrime));
 
   int nextPipe[2] = {-1, -1};
   int nextPid = -1;

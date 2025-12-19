@@ -1,0 +1,18 @@
+projet pour la matiere Programmation C avancé
+
+le but etait de crée un pipeline de processus worker,
+pour simuler le crible de hoare
+
+utilisation : 
+dans un terminal vous lancé ./master
+dans un deuxieme terminal vous lancé ./client 
+./client compute <n> -> vous renvoie si n est premier ou non
+./client howmany -> renvoie combien de nombre premier on etait trouvé
+./client highest -> renvoie le plus grand nombre premier trouvé
+./client local <n> -> comme compute, mais sauf qu'au lieu d'utilisé un pipeline de processus, il le fait avec des thread
+./client stop -> stop tout
+
+compilation : 
+make -> pour tout compilé
+make clean -> pour enlevé les .o
+make distclean -> pour enlevé les executables
